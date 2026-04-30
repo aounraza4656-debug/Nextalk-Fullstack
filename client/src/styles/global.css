@@ -1,0 +1,109 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg-1: #05070d;
+  --bg-2: #090f1e;
+  --bg-3: #050913;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --bg-1: #eaf0ff;
+    --bg-2: #dfe8ff;
+    --bg-3: #f7f9ff;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --bg-1: #05070d;
+    --bg-2: #090f1e;
+    --bg-3: #050913;
+  }
+}
+
+:root[data-theme="soft-light"],
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-1: #eaf0ff;
+  --bg-2: #dfe8ff;
+  --bg-3: #f7f9ff;
+}
+
+:root[data-theme="signature-blue"],
+:root[data-theme="blue"] {
+  color-scheme: dark;
+  --bg-1: #03091c;
+  --bg-2: #08163a;
+  --bg-3: #09102a;
+}
+
+:root[data-theme="premium-dark"] {
+  color-scheme: dark;
+  --bg-1: #06080f;
+  --bg-2: #0d1120;
+  --bg-3: #0b0f1a;
+}
+
+:root[data-theme="glass-neon"] {
+  color-scheme: dark;
+  --bg-1: #041213;
+  --bg-2: #041925;
+  --bg-3: #060e1a;
+}
+
+:root[data-theme="midnight-purple"] {
+  color-scheme: dark;
+  --bg-1: #130a24;
+  --bg-2: #1a1030;
+  --bg-3: #0f1026;
+}
+
+:root[data-theme="royal-black"] {
+  color-scheme: dark;
+  --bg-1: #000000;
+  --bg-2: #050505;
+  --bg-3: #0b0b0b;
+}
+
+:root[data-theme="frost-white"] {
+  color-scheme: light;
+  --bg-1: #f9fcff;
+  --bg-2: #eef6ff;
+  --bg-3: #e8f0fb;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #0b1222;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(95, 111, 255, 0.2) 0%, transparent 28%),
+    radial-gradient(circle at 80% 5%, rgba(116, 71, 255, 0.18) 0%, transparent 38%),
+    linear-gradient(140deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
+  min-height: 100vh;
+  color: #e2e8f0;
+  transition: background 0.35s ease;
+}
+
+#root { min-height: 100vh; }
+
+.glass-panel {
+  @apply border border-white/10 bg-slate-900/40 shadow-glass backdrop-blur-xl;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.96); opacity: 0.2; }
+  100% { transform: scale(1); opacity: 1; }
+}

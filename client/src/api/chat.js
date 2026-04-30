@@ -1,0 +1,30 @@
+import { http } from "./http";
+
+export const chatApi = {
+  searchUsers: (query) => http.get("/users/search", { params: { q: query } }),
+  getActiveUsers: () => http.get("/users/active"),
+  getFriends: () => http.get("/friends"),
+  getIncomingFriendRequests: () => http.get("/friends/requests/incoming"),
+  respondFriendRequest: (userId, action) => http.post(`/friends/${userId}/respond`, { action }),
+  cancelFriendRequest: (userId) => http.post(`/friends/${userId}/cancel`),
+  unfriendUser: (userId) => http.post(`/friends/${userId}/unfriend`),
+  getRelationship: (userId) => http.get(`/users/${userId}/relationship`),
+  sendFriendRequest: (userId) => http.post(`/friends/${userId}/request`),
+  blockUser: (userId) => http.post(`/users/${userId}/block`),
+  unblockUser: (userId) => http.post(`/users/${userId}/unblock`),
+  getBlockedUsers: () => http.get("/users/blocked"),
+  reportUser: (userId, reason) => http.post(`/users/${userId}/report`, { reason }),
+  createConversation: (targetUserId) => http.post("/conversations/direct", { targetUserId }),
+  getConversations: () => http.get("/conversations"),
+  updateConversationBucket: (conversationId, bucket) => http.patch(`/conversations/${conversationId}/bucket`, { bucket }),
+  pinConversation: (conversationId, pinned) => http.patch(`/conversations/${conversationId}/pin`, { pinned }),
+  setConversationVisibility: (conversationId, visible) => http.patch(`/conversations/${conversationId}/visibility`, { visible }),
+  getMessages: (conversationId) => http.get(`/conversations/${conversationId}/messages`),
+  sendMessage: (formData) => http.post("/messages", formData, { headers: { "Content-Type": "multipart/form-data" } }),
+  editMessage: (messageId, text) => http.patch(`/messages/${messageId}`, { text }),
+  deleteMessage: (messageId, mode = "me") => http.post(`/messages/${messageId}/delete`, { mode }),
+  getMessageInfo: (messageId) => http.get(`/messages/${messageId}/info`),
+  markSeen: (conversationId) => http.patch(`/conversations/${conversationId}/seen`),
+  getStories: () => http.get("/stories"),
+  createStory: (formData) => http.post("/stories", formData, { headers: { "Content-Type": "multipart/form-data" } })
+};
