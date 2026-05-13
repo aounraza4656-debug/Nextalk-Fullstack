@@ -6,6 +6,11 @@
     "install:all": "npm install --prefix server && npm install --prefix client",
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
-    "build:client": "npm run build --prefix client"
+    "build:client": "npm run build --prefix client",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.90.1"
   }
 }
