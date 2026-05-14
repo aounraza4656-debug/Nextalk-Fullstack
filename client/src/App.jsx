@@ -15,14 +15,14 @@ function GuestRoute({ children }) {
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
-    return <div className="grid min-h-screen place-items-center text-slate-300">Loading Nextalk...</div>;
+    return <div className="grid min-h-screen place-items-center text-slate-300">Loading NexVocal...</div>;
   }
   return user ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<div className="grid min-h-screen place-items-center text-slate-300">Loading Nextalk...</div>}>
+    <Suspense fallback={<div className="grid min-h-screen place-items-center text-slate-300">Loading NexVocal...</div>}>
       <Routes>
         <Route path="/" element={<GuestRoute><SplashPage /></GuestRoute>} />
         <Route path="/auth" element={<GuestRoute><AuthPage /></GuestRoute>} />

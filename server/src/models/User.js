@@ -8,6 +8,7 @@ const privacySchema = new mongoose.Schema(
     profileVisibility: { type: String, enum: ["public", "private"], default: "public" },
     activeStatusVisibility: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
     friendRequests: { type: String, enum: ["everyone", "fof", "nobody"], default: "everyone" },
+    friendsVisibility: { type: String, enum: ["everyone", "friends", "nobody"], default: "everyone" },
     readReceipts: { type: Boolean, default: true },
     messaging: { type: String, enum: ["everyone", "friends"], default: "everyone" }
   },
@@ -44,15 +45,16 @@ const userSchema = new mongoose.Schema(
     avatarUrl: {
       type: String,
       default: function defaultAvatar() {
-        const seed = encodeURIComponent(this.username || this.email || "nextalk");
+        const seed = encodeURIComponent(this.username || this.email || "nexvocal");
         return `https://api.dicebear.com/8.x/initials/svg?seed=${seed}`;
       }
     },
     bio: { type: String, default: "", trim: true, maxlength: 200 },
+    nameChangeCount: { type: Number, default: 0 },
     isOnline: { type: Boolean, default: false },
     activeStatus: { type: Boolean, default: true },
     lastSeenAt: { type: Date, default: null },
-    refreshTokenHash: { type: String, default: null },
+    refreshToken: { type: String, default: null },
     privacy: { type: privacySchema, default: () => ({}) },
     notifications: { type: notificationSchema, default: () => ({}) },
     theme: { type: themeSchema, default: () => ({}) },

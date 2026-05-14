@@ -1,5 +1,5 @@
 {
-  "name": "nextalk-client",
+  "name": "nexvocal-client",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -19,7 +19,8 @@
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.27.0",
-    "socket.io-client": "^4.8.0"
+    "socket.io-client": "^4.8.0",
+    "swiper": "^12.1.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",

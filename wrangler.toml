@@ -1,0 +1,8 @@
+name = "nexvocal"
+compatibility_date = "2026-05-13"
+pages_build_output_dir = "client/dist"
+
+[vars]
+VITE_API_URL = "https://nexvocal.com/api"
+VITE_APP_NAME = "NexVocal"
+VITE_APP_URL = "https://nexvocal.com"

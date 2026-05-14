@@ -38,7 +38,7 @@ export default function ChatListPanel({
           >
             <div className="flex items-start gap-3">
               <div className="relative">
-                <img src={chat.partner.avatarUrl || "https://api.dicebear.com/8.x/initials/svg?seed=nextalk"} alt={chat.partner.username} className="h-11 w-11 rounded-full object-cover" />
+                <img src={chat.partner.avatarUrl || "https://api.dicebear.com/8.x/initials/svg?seed=nexvocal"} alt={chat.partner.username} className="h-11 w-11 rounded-full object-cover" />
                 <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border border-slate-900 ${chat.partner.online ? "bg-emerald-400" : "bg-slate-500"}`} />
               </div>
               <div className="min-w-0 flex-1">

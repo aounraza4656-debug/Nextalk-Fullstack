@@ -1,4 +1,4 @@
-# Nextalk
+# NexVocal
 
 Premium private chat platform with a luxury dark interface and production-ready architecture.
 

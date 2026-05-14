@@ -27,9 +27,15 @@ export function hashToken(value) {
 }
 
 export function setRefreshCookie(res, token) {
-  res.cookie("nextalk_rt", token, {
+  res.cookie("refreshToken", token, {
     httpOnly: true,
-    secure: env.nodeEnv === "production",
+    secure: false,
+    sameSite: "lax",
+    maxAge: 1000 * 60 * 60 * 24 * 30
+  });
+  res.cookie("nexvocal_rt", token, {
+    httpOnly: true,
+    secure: false,
     sameSite: "lax",
     maxAge: 1000 * 60 * 60 * 24 * 30
   });

@@ -23,7 +23,7 @@ async function bootstrap() {
 
   httpServer.listen(env.port, () => {
     // eslint-disable-next-line no-console
-    console.log(`Nextalk API running on http://localhost:${env.port}`);
+    console.log(`NexVocal API running on port ${env.port}`);
   });
 }
 

@@ -28,7 +28,7 @@ export function createApp(io) {
   app.use("/uploads", express.static(path.resolve("server/uploads")));
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", app: "nextalk-api" });
+    res.json({ status: "ok", app: "nexvocal-api" });
   });
 
   app.use("/api/auth", authRoutes);

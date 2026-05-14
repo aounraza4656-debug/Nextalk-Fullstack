@@ -4,12 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#070a14" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Nextalk</title>
+    <meta name="description" content="NexVocal is a premium real-time communication platform for secure messaging, voice, and video calls." />
+    <meta property="og:title" content="NexVocal" />
+    <meta property="og:description" content="Secure private chats, instant messaging, and low-latency voice/video calls on NexVocal." />
+    <meta property="og:url" content="https://nexvocal.com" />
+    <meta property="og:type" content="website" />
+    <script>
+      (() => {
+        try {
+          const savedTheme = localStorage.getItem("theme")
+            || localStorage.getItem("nexvocal_theme_mode")
+            || localStorage.getItem("nextalk_theme_mode");
+          const nextTheme = savedTheme === "dark" || savedTheme === "light" ? savedTheme : "light";
+          document.documentElement.setAttribute("data-theme", nextTheme);
+        } catch (_error) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/png" href="/nexvocal-logo.png" />
+    <title>NexVocal</title>
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

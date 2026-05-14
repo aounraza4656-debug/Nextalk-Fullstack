@@ -27,6 +27,7 @@ router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
 router.get("/me", requireAuth, me);
 router.patch("/profile", requireAuth, upload.single("avatar"), updateProfile);
+router.put("/profile", requireAuth, upload.single("avatar"), updateProfile);
 router.patch("/settings", requireAuth, updateSettings);
 router.post("/refresh", refresh);
 router.post("/logout", logout, (_req, res) => res.json({ ok: true }));

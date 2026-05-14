@@ -4,6 +4,7 @@ const attachmentSchema = new mongoose.Schema(
   {
     fileName: String,
     fileType: String,
+    mediaType: { type: String, enum: ["image", "video", "audio", "file"], default: "file" },
     fileSize: Number,
     url: String
   },
@@ -17,7 +18,7 @@ const messageSchema = new mongoose.Schema(
     text: { type: String, trim: true, default: "" },
     attachments: [attachmentSchema],
     replyTo: { type: mongoose.Schema.Types.ObjectId, ref: "Message", default: null },
-    status: { type: String, enum: ["sent", "delivered", "seen"], default: "sent" },
+    status: { type: String, enum: ["sent", "delivered", "seen"], default: "delivered" },
     seenBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     deliveredAt: { type: Date, default: null },
     seenAt: { type: Date, default: null },

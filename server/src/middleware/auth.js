@@ -5,7 +5,9 @@ import { verifyAccessToken } from "../utils/token.js";
 export async function requireAuth(req, _res, next) {
   try {
     const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : req.cookies?.nextalk_at;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : (req.cookies?.nexvocal_at || req.cookies?.nextalk_at);
     if (!token) throw createError(401, "Unauthorized");
 
     const payload = verifyAccessToken(token);

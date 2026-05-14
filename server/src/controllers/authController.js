@@ -5,7 +5,7 @@ import path from "path";
 import { User } from "../models/User.js";
 import { OtpVerification } from "../models/OtpVerification.js";
 import { generateOtp, isValidEmail, otpExpiresAt } from "../utils/otp.js";
-import { hashToken, setRefreshCookie, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/token.js";
+import { setRefreshCookie, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/token.js";
 import { sendOtpEmail } from "../services/mailService.js";
 import { env } from "../config/env.js";
 
@@ -18,6 +18,8 @@ function publicUser(user) {
     email: user.email,
     avatarUrl: user.avatarUrl,
     bio: user.bio || "",
+    nameChangeCount: Number(user.nameChangeCount || 0),
+    createdAt: user.createdAt,
     activeStatus: user.activeStatus,
     privacy: user.privacy,
     notifications: user.notifications,
@@ -26,7 +28,7 @@ function publicUser(user) {
 }
 
 function setAccessCookie(res, token, rememberMe = true) {
-  res.cookie("nextalk_at", token, {
+  res.cookie("nexvocal_at", token, {
     httpOnly: true,
     secure: env.nodeEnv === "production",
     sameSite: "lax",
@@ -34,20 +36,22 @@ function setAccessCookie(res, token, rememberMe = true) {
   });
 }
 
-function randomUsernameFromEmail(email) {
-  const base = String(email || "user").split("@")[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase() || "user";
-  return `${base}${Math.floor(Math.random() * 10000)}`;
+function randomUsernameFromName(name, email) {
+  const seed = String(name || "").trim() || String(email || "").split("@")[0] || "user";
+  const base = seed.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase() || "user";
+  return `${base}_${Math.floor(100 + Math.random() * 900)}`;
 }
 
 async function upsertOAuthUser({ email, fullName = "", avatarUrl = "" }) {
   const lowerEmail = String(email).toLowerCase();
   let user = await User.findOne({ email: lowerEmail });
   if (!user) {
-    let username = randomUsernameFromEmail(lowerEmail);
+    let username = randomUsernameFromName(fullName, lowerEmail);
     // ensure uniqueness
-    while (await User.findOne({ username })) username = randomUsernameFromEmail(lowerEmail);
+    while (await User.findOne({ username })) username = randomUsernameFromName(fullName, lowerEmail);
     user = await User.create({
       fullName: fullName || username,
+      displayName: fullName || username,
       username,
       email: lowerEmail,
       passwordHash: await bcrypt.hash(nanoid(24), 10),
@@ -60,7 +64,7 @@ async function upsertOAuthUser({ email, fullName = "", avatarUrl = "" }) {
 async function issueSession(res, user, rememberMe = true) {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
-  user.refreshTokenHash = hashToken(refreshToken);
+  user.refreshToken = refreshToken;
   user.isOnline = true;
   user.lastSeenAt = new Date();
   await user.save();
@@ -167,32 +171,48 @@ export async function me(req, res, next) { try {
 export async function updateProfile(req, res, next) { try {
   const updates = {};
   const { fullName, displayName, username, bio, profileVisibility, avatarUrl, removeAvatar } = req.body;
-  if (fullName !== undefined) updates.fullName = fullName;
-  if (displayName !== undefined) updates.displayName = displayName;
-  if (bio !== undefined) updates.bio = bio;
+  const current = await User.findById(req.user._id).select("fullName displayName nameChangeCount username").lean();
+  if (!current) throw createError(404, "User not found");
+
+  let nameChanged = false;
+  if (fullName !== undefined) {
+    const nextFullName = String(fullName).trim();
+    if (!nextFullName) throw createError(400, "Name cannot be empty");
+    updates.fullName = nextFullName;
+    if (nextFullName !== String(current.fullName || "").trim()) nameChanged = true;
+  }
+  if (displayName !== undefined) {
+    const nextDisplayName = String(displayName).trim();
+    updates.displayName = nextDisplayName;
+    if (nextDisplayName && nextDisplayName !== String(current.displayName || "").trim()) nameChanged = true;
+  }
+  if (bio !== undefined) updates.bio = String(bio).trim();
   if (req.file) {
     updates.avatarUrl = `${env.uploadBaseUrl}/uploads/images/${path.basename(req.file.path)}`;
   } else if (removeAvatar === true || removeAvatar === "true") {
-    const seed = encodeURIComponent(req.user.username || req.user.email || "nextalk");
+    const seed = encodeURIComponent(req.user.username || req.user.email || "nexvocal");
     updates.avatarUrl = `https://api.dicebear.com/8.x/initials/svg?seed=${seed}`;
   } else if (avatarUrl !== undefined) {
     updates.avatarUrl = avatarUrl;
   }
   if (username !== undefined) {
-    const lowerUsername = String(username).toLowerCase();
-    const conflict = await User.findOne({ username: lowerUsername, _id: { $ne: req.user._id } }).lean();
+    const normalizedUsername = String(username).trim().toLowerCase();
+    if (!normalizedUsername) throw createError(400, "Username cannot be empty");
+    if (!/^[a-z0-9._]{3,30}$/.test(normalizedUsername)) throw createError(400, "Username must be 3-30 chars and use letters, numbers, dot, underscore");
+    const conflict = await User.findOne({ username: normalizedUsername, _id: { $ne: req.user._id } }).lean();
     if (conflict) throw createError(409, "Username already taken");
-    updates.username = lowerUsername;
+    updates.username = normalizedUsername;
   }
   if (profileVisibility !== undefined) updates["privacy.profileVisibility"] = profileVisibility;
+  if (nameChanged) updates.nameChangeCount = Number(current.nameChangeCount || 0) + 1;
 
   const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
-  res.json({ user: publicUser(user) });
+  res.json({ success: true, user: publicUser(user) });
 } catch (error) { next(error); } }
 
 export async function updateSettings(req, res, next) { try {
   const allowed = ["activeStatus", "privacy.profilePhoto", "privacy.lastSeen", "privacy.messageRequests", "privacy.readReceipts", "privacy.messaging", "notifications.push", "notifications.email", "notifications.sound", "theme.mode"];
-  const extendedAllowed = ["privacy.profileVisibility", "privacy.activeStatusVisibility", "privacy.friendRequests", "privacy.messageRequests"];
+  const extendedAllowed = ["privacy.profileVisibility", "privacy.activeStatusVisibility", "privacy.friendRequests", "privacy.friendsVisibility", "privacy.messageRequests"];
   const set = {};
   for (const key of [...new Set([...allowed, ...extendedAllowed])]) {
     const val = key.split(".").reduce((acc, part) => (acc ? acc[part] : undefined), req.body);
@@ -203,12 +223,13 @@ export async function updateSettings(req, res, next) { try {
 } catch (error) { next(error); } }
 
 export async function refresh(req, res, next) { try {
-  const refreshToken = req.cookies?.nextalk_rt;
+  const refreshToken = req.cookies?.refreshToken || req.cookies?.nexvocal_rt || req.cookies?.nextalk_rt;
   if (!refreshToken) throw createError(401, "No refresh token");
   const payload = verifyRefreshToken(refreshToken);
   const user = await User.findById(payload.sub);
-  if (!user || !user.refreshTokenHash || user.refreshTokenHash !== hashToken(refreshToken)) throw createError(401, "Invalid refresh token");
+  if (!user || !user.refreshToken || user.refreshToken !== refreshToken) throw createError(401, "Invalid refresh token");
   const nextAccess = signAccessToken(user);
+  setRefreshCookie(res, refreshToken);
   setAccessCookie(res, nextAccess, true);
   res.json({ ok: true, access_token: nextAccess });
 } catch (error) { next(error); } }
@@ -217,7 +238,7 @@ export async function googleAuthStart(req, res, next) {
   try {
     if (!env.googleClientId || !env.googleClientSecret) throw createError(503, "Google OAuth is not configured");
     const state = nanoid(24);
-    res.cookie("nextalk_google_state", state, {
+    res.cookie("nexvocal_google_state", state, {
       httpOnly: true,
       secure: env.nodeEnv === "production",
       sameSite: "lax",
@@ -240,7 +261,8 @@ export async function googleAuthStart(req, res, next) {
 export async function googleAuthCallback(req, res, next) {
   try {
     const { code, state } = req.query;
-    if (!code || !state || state !== req.cookies?.nextalk_google_state) throw createError(400, "Invalid OAuth state");
+    const oauthStateCookie = req.cookies?.nexvocal_google_state || req.cookies?.nextalk_google_state;
+    if (!code || !state || state !== oauthStateCookie) throw createError(400, "Invalid OAuth state");
 
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -268,6 +290,7 @@ export async function googleAuthCallback(req, res, next) {
       avatarUrl: profile.picture
     });
     await issueSession(res, user, true);
+    res.clearCookie("nexvocal_google_state");
     res.clearCookie("nextalk_google_state");
     res.redirect(`${env.clientOrigin}/app`);
   } catch (error) {
@@ -300,13 +323,16 @@ export async function googleLogin(req, res, next) {
 
 export async function logout(req, res, next) {
   try {
-    const refreshToken = req.cookies?.nextalk_rt;
+    const refreshToken = req.cookies?.refreshToken || req.cookies?.nexvocal_rt || req.cookies?.nextalk_rt;
     if (refreshToken) {
       const payload = verifyRefreshToken(refreshToken);
-      await User.findByIdAndUpdate(payload.sub, { $set: { refreshTokenHash: null, isOnline: false, lastSeenAt: new Date() } });
+      await User.findByIdAndUpdate(payload.sub, { $set: { refreshToken: null, isOnline: false, lastSeenAt: new Date() } });
     }
   } catch (_error) {
   } finally {
+    res.clearCookie("refreshToken");
+    res.clearCookie("nexvocal_rt");
+    res.clearCookie("nexvocal_at");
     res.clearCookie("nextalk_rt");
     res.clearCookie("nextalk_at");
     next();

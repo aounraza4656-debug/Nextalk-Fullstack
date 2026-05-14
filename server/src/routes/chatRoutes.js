@@ -6,7 +6,6 @@ import {
   createStory,
   deleteMessage,
   editMessage,
-  listActiveUsers,
   getMessageInfo,
   listFriends,
   listIncomingFriendRequests,
@@ -14,9 +13,12 @@ import {
   cancelFriendRequest,
   unfriendUser,
   getRelationship,
+  getUserProfile,
   listConversations,
   listMessages,
+  listCallLogs,
   listStories,
+  getCallConfig,
   markConversationSeen,
   blockUser,
   unblockUser,
@@ -34,13 +36,13 @@ const router = Router();
 
 router.use(requireAuth);
 router.get("/users/search", searchUsers);
-router.get("/users/active", listActiveUsers);
 router.get("/friends", listFriends);
 router.get("/friends/requests/incoming", listIncomingFriendRequests);
 router.post("/friends/:id/request", sendFriendRequest);
 router.post("/friends/:id/respond", respondFriendRequest);
 router.post("/friends/:id/cancel", cancelFriendRequest);
 router.post("/friends/:id/unfriend", unfriendUser);
+router.get("/users/:id/profile", getUserProfile);
 router.get("/users/:id/relationship", getRelationship);
 router.post("/users/:id/block", blockUser);
 router.post("/users/:id/unblock", unblockUser);
@@ -53,6 +55,8 @@ router.patch("/conversations/:id/pin", updateConversationPin);
 router.patch("/conversations/:id/visibility", updateConversationVisibility);
 router.get("/conversations/:id/messages", listMessages);
 router.patch("/conversations/:id/seen", markConversationSeen);
+router.get("/calls/config", getCallConfig);
+router.get("/calls", listCallLogs);
 router.post("/messages", upload.array("files", 10), sendMessage);
 router.patch("/messages/:id", editMessage);
 router.post("/messages/:id/delete", deleteMessage);

@@ -8,7 +8,7 @@ export default function Sidebar({ user, query, setQuery, onLogout }) {
 
       <div className="mt-6 flex items-center gap-3 rounded-xl border border-slate-700/80 bg-slate-950/70 p-3">
         <img
-          src={user.avatarUrl || "https://api.dicebear.com/8.x/initials/svg?seed=Nextalk"}
+          src={user.avatarUrl || "https://api.dicebear.com/8.x/initials/svg?seed=NexVocal"}
           alt={user.username}
           className="h-11 w-11 rounded-full object-cover"
         />

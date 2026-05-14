@@ -25,8 +25,16 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    const persisted = localStorage.getItem("theme")
+      || localStorage.getItem("nexvocal_theme_mode")
+      || localStorage.getItem("nextalk_theme_mode");
+    if (persisted === "light" || persisted === "dark") {
+      document.documentElement.setAttribute("data-theme", persisted);
+      return;
+    }
     if (!user?.theme?.mode) return;
-    document.documentElement.setAttribute("data-theme", user.theme.mode);
+    const normalized = user.theme.mode === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", normalized);
   }, [user?.theme?.mode]);
 
   const value = useMemo(
@@ -37,11 +45,13 @@ export function AuthProvider({ children }) {
       setVerificationState,
       async consumeOtp(payload) {
         const { data } = await authApi.verifyOtp(payload);
-        if (data.access_token) localStorage.setItem("nextalk_access_token", data.access_token);
-        if (data.refresh_token) localStorage.setItem("nextalk_refresh_token", data.refresh_token);
+        if (data.access_token) {
+          localStorage.setItem("nexvocal_access_token", data.access_token);
+          localStorage.removeItem("nextalk_access_token");
+        }
         setUser(data.user);
         setVerificationState(null);
-        toast.success("Welcome to Nextalk");
+        toast.success("Welcome to NexVocal");
         return data;
       },
       async saveProfile(payload) {
@@ -54,8 +64,8 @@ export function AuthProvider({ children }) {
       },
       async logout() {
         await authApi.logout();
+        localStorage.removeItem("nexvocal_access_token");
         localStorage.removeItem("nextalk_access_token");
-        localStorage.removeItem("nextalk_refresh_token");
         setUser(null);
         toast.success("Logged out");
       }

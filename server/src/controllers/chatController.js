@@ -4,13 +4,18 @@ import { User } from "../models/User.js";
 import { Conversation } from "../models/Conversation.js";
 import { Message } from "../models/Message.js";
 import { Story } from "../models/Story.js";
+import { CallLog } from "../models/CallLog.js";
 import { env } from "../config/env.js";
 import { assertParticipant, getOrCreateDirectConversation } from "../services/chatService.js";
 
 function messageAttachment(file) {
   if (!file) return [];
-  const folder = file.mimetype.startsWith("image/") ? "images" : "files";
-  return [{ fileName: file.originalname, fileType: file.mimetype, fileSize: file.size, url: `${env.uploadBaseUrl}/uploads/${folder}/${path.basename(file.path)}` }];
+  const isImage = file.mimetype.startsWith("image/");
+  const isVideo = file.mimetype.startsWith("video/");
+  const isAudio = file.mimetype.startsWith("audio/");
+  const folder = isImage ? "images" : "files";
+  const mediaType = isImage ? "image" : isVideo ? "video" : isAudio ? "audio" : "file";
+  return [{ fileName: file.originalname, fileType: file.mimetype, mediaType, fileSize: file.size, url: `${env.uploadBaseUrl}/uploads/${folder}/${path.basename(file.path)}` }];
 }
 
 function canEditMessage(message) {
@@ -50,16 +55,6 @@ export async function searchUsers(req, res, next) { try {
   res.json({ users });
 } catch (error) { next(error); } }
 
-export async function listActiveUsers(req, res, next) { try {
-  const me = await User.findById(req.user._id).select("blockedUsers").lean();
-  const users = await User.find({ _id: { $ne: req.user._id, $nin: me?.blockedUsers || [] }, blockedUsers: { $ne: req.user._id }, isOnline: true })
-    .select("_id fullName username avatarUrl isOnline")
-    .sort({ lastSeenAt: -1 })
-    .limit(20)
-    .lean();
-  res.json({ users });
-} catch (error) { next(error); } }
-
 export async function createDirectConversation(req, res, next) { try {
   const { targetUserId } = req.body;
   const target = await User.findById(targetUserId).lean();
@@ -70,7 +65,7 @@ export async function createDirectConversation(req, res, next) { try {
   const me = await User.findById(req.user._id).select("friends").lean();
   const isFriend = (me?.friends || []).some((x) => x.toString() === targetUserId.toString());
   if (!isFriend) {
-    conversation.chatBuckets.set(req.user._id.toString(), "requests");
+    conversation.chatBuckets.set(targetUserId.toString(), "requests");
     await conversation.save();
   }
   res.status(201).json({ conversation });
@@ -143,20 +138,29 @@ export async function listMessages(req, res, next) { try {
   const { id } = req.params;
   await assertParticipant(id, req.user._id);
 
-  const conversation = await Conversation.findById(id).select("participants").lean();
+  const conversation = await Conversation.findById(id).select("participants chatBuckets").lean();
   const partnerId = conversation.participants.find((x) => x.toString() !== req.user._id.toString());
   if (await isBlockedBetween(req.user._id, partnerId)) return res.json({ messages: [] });
 
-  const messages = await Message.find({ conversationId: id, deletedForUsers: { $ne: req.user._id } })
+  const messages = await Message.find({ conversationId: id, deletedForUsers: { $ne: req.user._id }, isDeleted: false })
     .populate("sender", "_id username fullName avatarUrl")
     .populate("replyTo", "_id text attachments")
     .sort({ createdAt: 1 }).lean();
 
-  res.json({ messages });
+  const bucket = conversation.chatBuckets?.get?.(req.user._id.toString()) ?? conversation.chatBuckets?.[req.user._id.toString()] ?? "primary";
+  const sanitized = bucket === "requests"
+    ? messages.map((message) => {
+      const senderId = message?.sender?._id?.toString?.() || "";
+      if (senderId === req.user._id.toString() || !message.attachments?.length) return message;
+      return { ...message, attachments: [], lockedMedia: true };
+    })
+    : messages;
+
+  res.json({ messages: sanitized, bucket });
 } catch (error) { next(error); } }
 
 export async function sendMessage(req, res, next) { try {
-  const { conversationId, targetUserId, text = "", replyTo } = req.body;
+  const { conversationId, targetUserId, text = "", replyTo, clientTempId = null } = req.body;
   let conversation;
   if (conversationId) conversation = await assertParticipant(conversationId, req.user._id);
   else if (targetUserId) conversation = await getOrCreateDirectConversation(req.user._id, targetUserId);
@@ -168,8 +172,10 @@ export async function sendMessage(req, res, next) { try {
   const files = [...(req.files || []), ...(req.file ? [req.file] : [])];
   const attachments = files.flatMap((file) => messageAttachment(file));
   if (!text.trim() && attachments.length === 0) throw createError(400, "Message content required");
-  const receiver = await User.findById(receiverId).lean();
-  const online = Boolean(receiver?.isOnline && receiver?.activeStatus);
+  const sender = await User.findById(req.user._id).select("friends").lean();
+  const isFriend = (sender?.friends || []).some((id) => id.toString() === receiverId.toString());
+  const receiverBucket = conversation.chatBuckets?.get?.(receiverId.toString()) ?? conversation.chatBuckets?.[receiverId.toString()];
+  if (!isFriend && !receiverBucket) conversation.chatBuckets.set(receiverId.toString(), "requests");
 
   const message = await Message.create({
     conversationId: conversation._id,
@@ -177,8 +183,8 @@ export async function sendMessage(req, res, next) { try {
     text,
     attachments,
     replyTo: replyTo || null,
-    status: online ? "delivered" : "sent",
-    deliveredAt: online ? new Date() : null,
+    status: "delivered",
+    deliveredAt: new Date(),
     seenBy: [req.user._id]
   });
 
@@ -186,8 +192,9 @@ export async function sendMessage(req, res, next) { try {
   await conversation.save();
 
   const populated = await Message.findById(message._id).populate("sender", "_id username fullName avatarUrl").populate("replyTo", "_id text attachments").lean();
-  req.app.get("io").to(`conversation:${conversation._id}`).emit("message:new", { ...populated, conversationId: conversation._id.toString() });
-  res.status(201).json({ message: { ...populated, conversationId: conversation._id.toString() } });
+  const realtimePayload = { ...populated, conversationId: conversation._id.toString(), clientTempId: clientTempId || undefined };
+  req.app.get("io").to(`conversation:${conversation._id}`).emit("message:new", realtimePayload);
+  res.status(201).json({ message: realtimePayload });
 } catch (error) { next(error); } }
 
 export async function blockUser(req, res, next) { try {
@@ -231,6 +238,7 @@ export async function sendFriendRequest(req, res, next) { try {
   }
   await User.findByIdAndUpdate(req.user._id, { $addToSet: { outgoingFriendRequests: targetId } });
   await User.findByIdAndUpdate(targetId, { $addToSet: { incomingFriendRequests: req.user._id } });
+  req.app.get("io").to(`user:${targetId.toString()}`).emit("social:update", { type: "friend_request", fromUserId: req.user._id.toString() });
   res.json({ ok: true, pending: true });
 } catch (error) { next(error); } }
 
@@ -249,7 +257,10 @@ export async function respondFriendRequest(req, res, next) { try {
     await User.findByIdAndUpdate(userId, { $addToSet: { friends: req.user._id } });
     req.app.get("io").to(`user:${req.user._id.toString()}`).emit("social:update", { type: "friend", userId });
     req.app.get("io").to(`user:${userId.toString()}`).emit("social:update", { type: "friend", userId: req.user._id.toString() });
+  } else {
+    req.app.get("io").to(`user:${userId.toString()}`).emit("social:update", { type: "friend_request_declined", userId: req.user._id.toString() });
   }
+  req.app.get("io").to(`user:${req.user._id.toString()}`).emit("social:update", { type: "friend_request_updated", userId });
   res.json({ ok: true, action });
 } catch (error) { next(error); } }
 
@@ -257,6 +268,7 @@ export async function cancelFriendRequest(req, res, next) { try {
   const targetId = req.params.id;
   await User.findByIdAndUpdate(req.user._id, { $pull: { outgoingFriendRequests: targetId } });
   await User.findByIdAndUpdate(targetId, { $pull: { incomingFriendRequests: req.user._id } });
+  req.app.get("io").to(`user:${targetId.toString()}`).emit("social:update", { type: "friend_request_canceled", userId: req.user._id.toString() });
   res.json({ ok: true });
 } catch (error) { next(error); } }
 
@@ -277,6 +289,58 @@ export async function getRelationship(req, res, next) { try {
     : (me?.outgoingFriendRequests || []).some((x) => x.toString() === targetId) ? "pending"
     : "none";
   res.json({ status });
+} catch (error) { next(error); } }
+
+export async function getUserProfile(req, res, next) { try {
+  const targetId = req.params.id;
+  const [me, target] = await Promise.all([
+    User.findById(req.user._id).select("friends blockedUsers").lean(),
+    User.findById(targetId)
+      .select("_id fullName displayName username avatarUrl bio createdAt privacy friends blockedUsers nameChangeCount")
+      .populate("friends", "_id username fullName displayName avatarUrl")
+      .lean()
+  ]);
+
+  if (!target) throw createError(404, "User not found");
+
+  const blockedByMe = (me?.blockedUsers || []).some((x) => x.toString() === targetId.toString());
+  const blockedByThem = (target?.blockedUsers || []).some((x) => x.toString() === req.user._id.toString());
+  if (blockedByMe || blockedByThem) throw createError(403, "User unavailable");
+
+  const meFriendSet = new Set((me?.friends || []).map((x) => x.toString()));
+  const targetFriendIds = (target.friends || []).map((friend) => friend?._id?.toString?.() || friend.toString());
+  const isSelf = targetId.toString() === req.user._id.toString();
+  const isFriend = isSelf || meFriendSet.has(targetId.toString()) || targetFriendIds.includes(req.user._id.toString());
+  const visibility = target.privacy?.friendsVisibility || "everyone";
+  const canSeeFriends = isSelf || visibility === "everyone" || (visibility === "friends" && isFriend);
+  const mutualFriendsCount = isSelf ? targetFriendIds.length : targetFriendIds.filter((id) => meFriendSet.has(id)).length;
+  const friends = canSeeFriends
+    ? (target.friends || []).map((friend) => ({
+      _id: friend._id,
+      username: friend.username,
+      fullName: friend.fullName,
+      displayName: friend.displayName,
+      avatarUrl: friend.avatarUrl
+    }))
+    : [];
+
+  res.json({
+    profile: {
+      id: target._id.toString(),
+      fullName: target.fullName,
+      displayName: target.displayName || target.fullName,
+      username: target.username,
+      avatarUrl: target.avatarUrl,
+      bio: target.bio || "",
+      createdAt: target.createdAt,
+      nameChangeCount: Number(target.nameChangeCount || 0),
+      privacy: target.privacy || {},
+      friendsCount: targetFriendIds.length,
+      mutualFriendsCount,
+      canSeeFriends,
+      friends
+    }
+  });
 } catch (error) { next(error); } }
 
 export async function listFriends(req, res, next) { try {
@@ -321,9 +385,17 @@ export async function deleteMessage(req, res, next) { try {
   }
 
   await message.save();
+  const payload = {
+    _id: message._id.toString(),
+    deleteMode: mode,
+    actorId: req.user._id.toString(),
+    isDeleted: message.isDeleted,
+    deletedForEveryone: message.deletedForEveryone,
+    deletedForUsers: message.deletedForUsers
+  };
   req.app.get("io").to(`conversation:${message.conversationId}`).emit("message:updated", {
     conversationId: message.conversationId.toString(),
-    message: { _id: message._id.toString(), isDeleted: message.isDeleted, text: message.text, attachments: message.attachments, deletedForUsers: message.deletedForUsers }
+    message: payload
   });
   res.json({ ok: true });
 } catch (error) { next(error); } }
@@ -339,7 +411,9 @@ export async function getMessageInfo(req, res, next) { try {
       deliveredAt: message.deliveredAt,
       readAt: message.seenAt,
       editedAt: message.editedAt,
-      status: message.status
+      status: message.status,
+      mediaType: message.attachments?.length ? [...new Set(message.attachments.map((a) => a.mediaType || "file"))].join(", ") : "text",
+      seenStatus: message.status === "seen" ? "seen" : "delivered"
     }
   });
 } catch (error) { next(error); } }
@@ -348,19 +422,82 @@ export async function markConversationSeen(req, res, next) { try {
   const { id } = req.params;
   await assertParticipant(id, req.user._id);
   const me = await User.findById(req.user._id).select("privacy.readReceipts");
+  const targetMessages = await Message.find({ conversationId: id, sender: { $ne: req.user._id }, seenBy: { $ne: req.user._id }, isDeleted: false }).select("_id").lean();
+  const now = new Date();
   if (me?.privacy?.readReceipts === false) {
     await Message.updateMany(
-      { conversationId: id, sender: { $ne: req.user._id }, seenBy: { $ne: req.user._id } },
-      { $addToSet: { seenBy: req.user._id }, $set: { status: "delivered", deliveredAt: new Date() } }
+      { conversationId: id, sender: { $ne: req.user._id }, seenBy: { $ne: req.user._id }, isDeleted: false },
+      { $addToSet: { seenBy: req.user._id }, $set: { status: "delivered", deliveredAt: now } }
     );
+    targetMessages.forEach((entry) => {
+      req.app.get("io").to(`conversation:${id}`).emit("message:updated", {
+        conversationId: id.toString(),
+        message: { _id: entry._id.toString(), status: "delivered", deliveredAt: now }
+      });
+    });
   } else {
     await Message.updateMany(
-      { conversationId: id, sender: { $ne: req.user._id }, seenBy: { $ne: req.user._id } },
-      { $addToSet: { seenBy: req.user._id }, $set: { status: "seen", seenAt: new Date(), deliveredAt: new Date() } }
+      { conversationId: id, sender: { $ne: req.user._id }, seenBy: { $ne: req.user._id }, isDeleted: false },
+      { $addToSet: { seenBy: req.user._id }, $set: { status: "seen", seenAt: now, deliveredAt: now } }
     );
+    targetMessages.forEach((entry) => {
+      req.app.get("io").to(`conversation:${id}`).emit("message:updated", {
+        conversationId: id.toString(),
+        message: { _id: entry._id.toString(), status: "seen", seenAt: now, deliveredAt: now }
+      });
+    });
   }
 
   res.json({ ok: true });
+} catch (error) { next(error); } }
+
+export async function getCallConfig(_req, res, next) { try {
+  res.json({ iceServers: env.callIceServers });
+} catch (error) { next(error); } }
+
+export async function listCallLogs(req, res, next) { try {
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit || 40)));
+  const meId = req.user._id.toString();
+  const calls = await CallLog.find({ participants: req.user._id })
+    .populate("caller", "_id username fullName displayName avatarUrl")
+    .populate("callee", "_id username fullName displayName avatarUrl")
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+
+  const logs = calls.map((call) => {
+    const callerId = call?.caller?._id?.toString?.() || call?.caller?.toString?.() || "";
+    const calleeId = call?.callee?._id?.toString?.() || call?.callee?.toString?.() || "";
+    const direction = callerId === meId ? "outgoing" : "incoming";
+    const partner = callerId === meId ? call.callee : call.caller;
+    return {
+      _id: call._id,
+      callType: call.callType || "audio",
+      status: call.status || "completed",
+      direction,
+      conversationId: call.conversationId || null,
+      initiatedAt: call.initiatedAt || call.createdAt,
+      acceptedAt: call.acceptedAt || null,
+      endedAt: call.endedAt || null,
+      durationSeconds: Number(call.durationSeconds || 0),
+      endedReason: call.endedReason || "",
+      partner: partner ? {
+        _id: partner._id,
+        username: partner.username,
+        fullName: partner.fullName,
+        displayName: partner.displayName,
+        avatarUrl: partner.avatarUrl
+      } : {
+        _id: callerId === meId ? calleeId : callerId,
+        username: "unknown",
+        fullName: "Unknown User",
+        displayName: "Unknown User",
+        avatarUrl: ""
+      }
+    };
+  });
+
+  res.json({ calls: logs });
 } catch (error) { next(error); } }
 
 export async function listStories(req, res, next) { try {
